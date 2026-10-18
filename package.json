@@ -1,0 +1,43 @@
+{
+  "name": "dsh-aoci-bind",
+  "version": "0.1.0",
+  "description": "DSH Host 侧 AOCI 接入插件：发现带 aoci.txt 的工作区、诊断/修复 MCP 绑定、初始化未接入的仓库，并提供状态与体检工具。",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "aoci",
+    "mcp",
+    "workspace"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/yamlpatch.test.mjs test/discovery.test.mjs test/binding.test.mjs test/tools.test.mjs test/plugin.test.mjs",
+    "install:profile": "pwsh -NoProfile -File scripts/install.ps1",
+    "uninstall:profile": "pwsh -NoProfile -File scripts/install.ps1 -Uninstall"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

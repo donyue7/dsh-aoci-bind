@@ -1,0 +1,12 @@
+# dsh-aoci-bind bundle patch
+#
+# This is the bundle layer: `dsh.bundle.patch` in package.json points here, so
+# mounting the plugin through the plugin manager (or `dsh plugin add`) appends
+# this Host row to the composed entry list.
+#
+# The row carries no config on purpose: every default is already the value the
+# plugin ships with, so an upgrade cannot silently change behaviour. Override
+# anything you need in the profile's own cordis.patch.yml on the same `id`.
+- insert:
+    - id: aoci-bind
+      name: 'dsh-aoci-bind'

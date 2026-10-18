@@ -1,0 +1,40 @@
+name: publish
+
+# Publishes to npm when a version tag is pushed (e.g. `git tag v0.1.0 && git push
+# --tags`). Authentication uses npm trusted publishing (OIDC), so no long-lived
+# token is stored in the repository.
+#
+# One-time setup on npmjs.com (package settings → Trusted Publisher):
+#   provider        GitHub Actions
+#   organization    donyue7
+#   repository      dsh-aoci-bind
+#   workflow file   publish.yml
+#   permissions     Allow npm publish
+#
+# Trusted publishing requires npm CLI >= 11.5.1, which is why the workflow
+# upgrades npm before publishing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - name: Use an npm version that supports trusted publishing
+        run: npm install --global npm@latest
+      - name: Run the plugin test suite
+        run: npm test
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
