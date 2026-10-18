@@ -133,7 +133,7 @@ cd dsh-aoci-bind
 node --test test/yamlpatch.test.mjs test/discovery.test.mjs test/binding.test.mjs test/tools.test.mjs test/plugin.test.mjs
 ```
 
-37 个用例，覆盖：
+40 个用例，覆盖：
 
 | 验收点 | 用例 |
 | --- | --- |
@@ -141,6 +141,7 @@ node --test test/yamlpatch.test.mjs test/discovery.test.mjs test/binding.test.mj
 | 重复注册幂等（第二次 repair 零改动、文件逐字节不变） | `binding.test.mjs`、`tools.test.mjs` |
 | serverName 防碰撞（同名目录 → `aoci-twin` / `aoci-twin-2`） | `binding.test.mjs` |
 | **StoreProject 未绑定 → 修复 → 已绑定** | `binding.test.mjs`、`tools.test.mjs` |
+| **重复绑定收敛**：同一仓库多条行 → 保留规范行、删除多余行（含跨 home/profile 两个文件） | `binding.test.mjs` |
 | 损坏 YAML 拒绝（文件保持原样） | `binding.test.mjs`、`yamlpatch.test.mjs` |
 | 旧 home `~/.dsh` 兼容（legacy-only 视为未绑定，repair 只写 active home） | `binding.test.mjs` |
 | **与其它工具共存**：别的工具写入的行按 `--repo` 路径识别为已绑定，repair 不追加重复行；路径斜杠/大小写差异不影响识别 | `binding.test.mjs` |
