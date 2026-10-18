@@ -5,7 +5,7 @@ import path from 'node:path';
 import { planRepair } from '../lib/binding.js';
 import { applyPlan } from '../lib/patchfiles.js';
 import { buildSnapshot } from '../lib/state.js';
-import { boundPatch, configFor, makeRepo, makeTemp, readText, writeRegistry } from './helpers.mjs';
+import { boundPatch, configFor, makePlainDir, makeRepo, makeTemp, readText, writeRegistry } from './helpers.mjs';
 
 /** Home + two indexed repositories, one already bound. */
 async function scenario() {
@@ -140,6 +140,83 @@ test('a binding that lives only in the legacy home is inert, and repair adds an 
   const after = first.after.diagnosis.workspaces.find((workspace) => workspace.path === gys);
   assert.equal(after.state, 'bound');
   assert.equal(after.role, 'home');
+});
+
+test('a plugin mount row that merely shares the aoci- id prefix is not an AOCI server', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const gys = await makeRepo(repos, 'Gys');
+  await writeRegistry(home, [{ id: 'w1', path: gys, title: 'Gys' }]);
+  const patch = path.join(home, 'cordis.patch.yml');
+  await fs.writeFile(
+    patch,
+    [
+      '# >>> dsh-aoci-bind (managed by scripts/install.ps1) >>>',
+      '- insert:',
+      '    - id: aoci-bind',
+      "      name: 'dsh-aoci-bind'",
+      '# <<< dsh-aoci-bind (managed by scripts/install.ps1) <<<',
+      '',
+      boundPatch({ repo: gys }),
+    ].join('\n'),
+    'utf8',
+  );
+  const config = configFor(home);
+  const snapshot = await buildSnapshot(config);
+  // `aoci-bind` has no serverName and no aoci command, so it is not a server row.
+  assert.equal(snapshot.rows.some((row) => row.id === 'aoci-bind'), false);
+  assert.equal(snapshot.diagnosis.orphans.length, 0, 'the plugin row must not be an orphan');
+  assert.equal(snapshot.diagnosis.workspaces.find((workspace) => workspace.path === gys).state, 'bound');
+});
+
+test('a repository without an index is a warning, not a failure', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const gys = await makeRepo(repos, 'Gys');
+  await writeRegistry(home, [{ id: 'w1', path: gys, title: 'Gys' }]);
+  const config = configFor(home);
+  await applyPlan(
+    planRepair({ diagnosis: (await buildSnapshot(config)).diagnosis, rows: [], config }),
+    config,
+    {},
+  );
+  const snapshot = await buildSnapshot(config);
+  const gysState = snapshot.diagnosis.workspaces.find((workspace) => workspace.path === gys);
+  assert.equal(gysState.state, 'bound');
+  const empty = await makePlainDir(repos, 'Empty');
+  await writeRegistry(home, [
+    { id: 'w1', path: gys, title: 'Gys' },
+    { id: 'w2', path: empty, title: 'Empty' },
+  ]);
+  const withEmpty = await buildSnapshot(config);
+  assert.equal(withEmpty.diagnosis.workspaces.find((workspace) => workspace.path === empty).state, 'no_index');
+  assert.equal(withEmpty.diagnosis.ok, true, 'no_index is a warning, not an error');
+});
+
+test('other MCP servers (zxy, omnisockit) are not mistaken for AOCI rows', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const gys = await makeRepo(repos, 'Gys');
+  await writeRegistry(home, [{ id: 'w1', path: gys, title: 'Gys' }]);
+  const dbRow = [
+    '- insert:',
+    '    - id: DB',
+    "      name: '@deepseek-ai/dsh-mcp-client'",
+    '      config:',
+    "        serverName: zxy",
+    '        transport: stdio',
+    '        command: npx',
+    '        args:',
+    "          - '-y'",
+    "          - '@benborla29/mcp-server-mysql'",
+    '',
+  ].join('\n');
+  await fs.writeFile(path.join(home, 'cordis.patch.yml'), dbRow, 'utf8');
+  const config = configFor(home);
+  const snapshot = await buildSnapshot(config);
+  assert.equal(snapshot.rows.length, 0, 'a non-AOCI MCP server is not a binding');
+  assert.equal(snapshot.diagnosis.orphans.length, 0);
+  assert.equal(snapshot.diagnosis.workspaces.find((workspace) => workspace.path === gys).state, 'unbound');
 });
 
 test('orphan rows are reported, and pruned only when asked', async () => {

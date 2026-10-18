@@ -80,6 +80,35 @@ pwsh -NoProfile -File scripts/install.ps1 -Uninstall
     probeTimeoutMs: 20000
 ```
 
+## npm 发布：首版手动，之后 tag 自动
+
+npm 的 Trusted Publisher（OIDC）只能给**已存在**的包配置。首版发布前包还不存在，因此：
+
+1. **首版手动发**（维护者执行，需要交互式 2FA，或一个带 Bypass-2FA 的 granular token）：
+
+   ```powershell
+   npm publish --registry=https://registry.npmjs.org --access public
+   ```
+
+2. 首版发布后，到 `npmjs.com → dsh-aoci-bind → Settings → Trusted Publisher` 配置：
+
+   | 字段 | 值 |
+   | --- | --- |
+   | Provider | **GitHub Actions** |
+   | Organization or user | `donyue7` |
+   | Repository | `dsh-aoci-bind` |
+   | Workflow file | `publish.yml` |
+   | Permissions | **Allow npm publish** |
+
+3. 之后每次发版：
+
+   ```powershell
+   git tag v0.1.1 && git push --tags
+   ```
+
+   `.github/workflows/publish.yml` 会用 OIDC 自动 `npm publish --provenance`，**不需要任何长期 token**。
+   配置了 stage-only 权限时，改为 `npm stage publish`，发布仍需维护者批准。
+
 ## 安全边界（为什么可以放心让它写配置）
 
 - **只拼接、不重排**：编辑器是行模型，只替换/追加它自己拥有的 MCP 行，注释、空行、别人的行逐字节保留。
