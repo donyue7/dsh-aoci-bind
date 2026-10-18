@@ -118,6 +118,14 @@ npm 的 Trusted Publisher（OIDC）只能给**已存在**的包配置。首版�
 - **幂等**：重复调用 repair 不产生第二行；第二次运行 `changes = []`。
 - **删除是显式选项**：孤儿行只在 `prune_orphans: true` 时删除。
 
+## 脚本
+
+| 脚本 | 用途 |
+| --- | --- |
+| `scripts/install.ps1` | 把插件装进 / 卸出一个 profile：写前备份、标记注释包裹的挂载行、复制包目录；`-Uninstall` 完整回滚 |
+| `scripts/status.mjs` | **只读**演示：对真实 `$DSH_HOME` 跑 `aoci_bind_status` / `aoci_doctor` / `aoci_bind_repair --dry_run` |
+| `scripts/apply.mjs` | 对真实 `$DSH_HOME` 执行 repair（带 `--dry-run` 只预览）；与 Host 工具走同一条代码路径 |
+
 ## 自测
 
 ```powershell
@@ -125,7 +133,7 @@ cd dsh-aoci-bind
 node --test test/yamlpatch.test.mjs test/discovery.test.mjs test/binding.test.mjs test/tools.test.mjs test/plugin.test.mjs
 ```
 
-32 个用例，覆盖：
+37 个用例，覆盖：
 
 | 验收点 | 用例 |
 | --- | --- |
@@ -134,7 +142,9 @@ node --test test/yamlpatch.test.mjs test/discovery.test.mjs test/binding.test.mj
 | serverName 防碰撞（同名目录 → `aoci-twin` / `aoci-twin-2`） | `binding.test.mjs` |
 | **StoreProject 未绑定 → 修复 → 已绑定** | `binding.test.mjs`、`tools.test.mjs` |
 | 损坏 YAML 拒绝（文件保持原样） | `binding.test.mjs`、`yamlpatch.test.mjs` |
-| 旧 home `~/.dsh` 兼容（只存在于旧 home 的绑定仍被识别） | `binding.test.mjs` |
+| 旧 home `~/.dsh` 兼容（legacy-only 视为未绑定，repair 只写 active home） | `binding.test.mjs` |
+| **与其它工具共存**：别的工具写入的行按 `--repo` 路径识别为已绑定，repair 不追加重复行；路径斜杠/大小写差异不影响识别 | `binding.test.mjs` |
+| 非 AOCI 的 MCP 行（`zxy` / `omnisockit`）与本插件挂载行不被误判 | `binding.test.mjs` |
 | 工具面（4 个工具、schema、渲染、错误路径） | `tools.test.mjs`、`plugin.test.mjs` |
 
 测试全部在临时目录里构造 home / workspace / patch 文件，**不触碰真实 DSH 配置**。

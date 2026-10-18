@@ -219,6 +219,56 @@ test('other MCP servers (zxy, omnisockit) are not mistaken for AOCI rows', async
   assert.equal(snapshot.diagnosis.workspaces.find((workspace) => workspace.path === gys).state, 'unbound');
 });
 
+test('a binding written by another tool (different id and serverName) is recognised by repository path', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const store = await makeRepo(repos, 'StoreProject');
+  await writeRegistry(home, [{ id: 'w1', path: store, title: 'StoreProject' }]);
+  const patch = path.join(home, 'cordis.patch.yml');
+  // A panel-style row: its own id prefix and its own serverName, but the same
+  // repository and the same aoci command.
+  await fs.writeFile(
+    patch,
+    [
+      '- insert:',
+      '    - id: panel-storeproject',
+      "      name: '@deepseek-ai/dsh-mcp-client'",
+      '      config:',
+      "        serverName: 'store-project'",
+      '        transport: stdio',
+      "        command: 'C:/aoci/bin/aoci-rc19.exe'",
+      '        args:',
+      "          - '--repo'",
+      `          - '${store.replaceAll('\\', '/')}'`,
+      "          - 'mcp'",
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const config = configFor(home);
+  const snapshot = await buildSnapshot(config);
+  const state = snapshot.diagnosis.workspaces.find((workspace) => workspace.path === store);
+  assert.equal(state.state, 'bound', 'the repository is bound by path, not by id');
+  assert.equal(state.serverName, 'store-project');
+  const plan = planRepair({ diagnosis: snapshot.diagnosis, rows: snapshot.rows, config });
+  assert.equal(plan.changes.length, 0, 'repair must not append a second row');
+});
+
+test('path spelling differences still match the same repository', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const store = await makeRepo(repos, 'StoreProject');
+  await writeRegistry(home, [{ id: 'w1', path: store, title: 'StoreProject' }]);
+  const patch = path.join(home, 'cordis.patch.yml');
+  const oddSpelling = store.replaceAll('\\', '/').toUpperCase();
+  await fs.writeFile(patch, boundPatch({ id: 'panel-x', serverName: 'aoci-x', repo: oddSpelling }), 'utf8');
+  const config = configFor(home);
+  const snapshot = await buildSnapshot(config);
+  const state = snapshot.diagnosis.workspaces.find((workspace) => workspace.path === store);
+  assert.equal(state.state, 'bound');
+  assert.equal(snapshot.diagnosis.orphans.length, 0);
+});
+
 test('orphan rows are reported, and pruned only when asked', async () => {
   const { home, gys, config } = await scenario();
   const patch = path.join(home, 'cordis.patch.yml');
