@@ -269,6 +269,91 @@ test('path spelling differences still match the same repository', async () => {
   assert.equal(snapshot.diagnosis.orphans.length, 0);
 });
 
+test('duplicate bindings keep the canonical row and remove the extra one', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const store = await makeRepo(repos, 'StoreProject');
+  await writeRegistry(home, [{ id: 'w1', path: store, title: 'StoreProject' }]);
+  const patch = path.join(home, 'cordis.patch.yml');
+  // A panel-style row first, then the canonical one.
+  await fs.writeFile(patch, boundPatch({ id: 'panel-storeproject', serverName: 'store-project', repo: store }), 'utf8');
+  await fs.appendFile(patch, boundPatch({ id: 'aoci-storeproject', serverName: 'aoci-storeproject', repo: store }), 'utf8');
+
+  const config = configFor(home);
+  const before = await buildSnapshot(config);
+  assert.equal(before.diagnosis.workspaces.find((workspace) => workspace.path === store).state, 'duplicate_binding');
+
+  const plan = planRepair({ diagnosis: before.diagnosis, rows: before.rows, config });
+  assert.deepEqual(
+    plan.changes.map((change) => `${change.action}:${change.id}`).sort(),
+    ['remove:panel-storeproject', 'replace:aoci-storeproject'],
+  );
+  const applied = await applyPlan(plan, config, {});
+  assert.equal(applied.ok, true);
+
+  const after = await buildSnapshot(config);
+  assert.equal(after.diagnosis.workspaces.find((workspace) => workspace.path === store).state, 'bound');
+  assert.deepEqual(after.rows.map((row) => row.id), ['aoci-storeproject']);
+
+  // Idempotent afterwards.
+  const again = planRepair({ diagnosis: after.diagnosis, rows: after.rows, config });
+  assert.equal(again.changes.length, 0);
+});
+
+test('duplicate bindings with no canonical id keep the first row and remove the rest', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const store = await makeRepo(repos, 'StoreProject');
+  await writeRegistry(home, [{ id: 'w1', path: store, title: 'StoreProject' }]);
+  const patch = path.join(home, 'cordis.patch.yml');
+  await fs.writeFile(
+    patch,
+    [
+      boundPatch({ id: 'panel-a', serverName: 'panel-a', repo: store }),
+      boundPatch({ id: 'panel-b', serverName: 'panel-b', repo: store }),
+    ].join('\n'),
+    'utf8',
+  );
+  const config = configFor(home);
+  const before = await buildSnapshot(config);
+  const plan = planRepair({ diagnosis: before.diagnosis, rows: before.rows, config });
+  const applied = await applyPlan(plan, config, {});
+  assert.equal(applied.ok, true);
+  const after = await buildSnapshot(config);
+  assert.equal(after.rows.length, 1);
+  assert.equal(after.rows[0].id, 'panel-a');
+  assert.equal(after.diagnosis.workspaces.find((workspace) => workspace.path === store).state, 'bound');
+  assert.equal(after.rows[0].serverName, 'panel-a', 'a unique existing serverName is kept');
+});
+
+test('duplicates spread across the home and profile patches are collapsed into one', async () => {
+  const home = await makeTemp();
+  const repos = path.join(home, 'repos');
+  const store = await makeRepo(repos, 'StoreProject');
+  await writeRegistry(home, [{ id: 'w1', path: store, title: 'StoreProject' }]);
+  const profileDir = path.join(home, 'profiles', 'desktop');
+  await fs.mkdir(profileDir, { recursive: true });
+  await fs.writeFile(path.join(home, 'cordis.patch.yml'), boundPatch({ id: 'aoci-storeproject', serverName: 'aoci-storeproject', repo: store }), 'utf8');
+  await fs.writeFile(path.join(profileDir, 'cordis.patch.yml'), boundPatch({ id: 'panel-storeproject', serverName: 'panel-storeproject', repo: store }), 'utf8');
+
+  const config = configFor(home);
+  const before = await buildSnapshot(config);
+  assert.equal(before.rows.length, 2);
+  const plan = planRepair({ diagnosis: before.diagnosis, rows: before.rows, config });
+  const applied = await applyPlan(plan, config, {});
+  assert.equal(applied.ok, true);
+  assert.ok(applied.backups.length >= 1, 'the edited file must be backed up');
+
+  const after = await buildSnapshot(config);
+  assert.equal(after.rows.length, 1);
+  assert.equal(after.rows[0].id, 'aoci-storeproject');
+  assert.equal(after.diagnosis.workspaces.find((workspace) => workspace.path === store).state, 'bound');
+  // The profile patch must still be a valid patch with the extra row gone.
+  const profileAfter = after.files.find((file) => file.role === 'profile');
+  assert.equal(profileAfter.parsed.ok, true);
+  assert.equal(profileAfter.parsed.rows.length, 0);
+});
+
 test('orphan rows are reported, and pruned only when asked', async () => {
   const { home, gys, config } = await scenario();
   const patch = path.join(home, 'cordis.patch.yml');
